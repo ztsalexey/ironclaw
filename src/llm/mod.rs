@@ -9,6 +9,7 @@ mod nearai;
 mod nearai_chat;
 mod provider;
 mod reasoning;
+mod retry;
 pub mod session;
 
 pub use failover::FailoverProvider;

@@ -461,6 +461,7 @@ impl SetupWizard {
                 api_mode: crate::config::NearAiApiMode::Responses,
                 api_key: None,
                 fallback_model: None,
+                max_retries: 3,
             },
         };
 
