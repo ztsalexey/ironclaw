@@ -4,12 +4,14 @@
 //! - **Responses API** (chat-api): Session-based auth, uses `/v1/responses` endpoint
 //! - **Chat Completions API** (cloud-api): API key auth, uses `/v1/chat/completions` endpoint
 
+pub mod failover;
 mod nearai;
 mod nearai_chat;
 mod provider;
 mod reasoning;
 pub mod session;
 
+pub use failover::FailoverProvider;
 pub use nearai::{ModelInfo, NearAiProvider};
 pub use nearai_chat::NearAiChatProvider;
 pub use provider::{
@@ -21,7 +23,7 @@ pub use session::{SessionConfig, SessionManager, create_session_manager};
 
 use std::sync::Arc;
 
-use crate::config::{LlmConfig, NearAiApiMode};
+use crate::config::{LlmConfig, NearAiApiMode, NearAiConfig};
 use crate::error::LlmError;
 
 /// Create an LLM provider based on configuration.
@@ -32,17 +34,31 @@ pub fn create_llm_provider(
     config: &LlmConfig,
     session: Arc<SessionManager>,
 ) -> Result<Arc<dyn LlmProvider>, LlmError> {
-    match config.nearai.api_mode {
+    create_llm_provider_with_config(&config.nearai, session)
+}
+
+/// Create an LLM provider from a `NearAiConfig` directly.
+///
+/// This is useful when constructing additional providers for failover,
+/// where only the model name differs from the primary config.
+pub fn create_llm_provider_with_config(
+    config: &NearAiConfig,
+    session: Arc<SessionManager>,
+) -> Result<Arc<dyn LlmProvider>, LlmError> {
+    match config.api_mode {
         NearAiApiMode::Responses => {
-            tracing::info!("Using Responses API (chat-api) with session auth");
-            Ok(Arc::new(NearAiProvider::new(
-                config.nearai.clone(),
-                session,
-            )))
+            tracing::info!(
+                model = %config.model,
+                "Using Responses API (chat-api) with session auth"
+            );
+            Ok(Arc::new(NearAiProvider::new(config.clone(), session)))
         }
         NearAiApiMode::ChatCompletions => {
-            tracing::info!("Using Chat Completions API (cloud-api) with API key auth");
-            Ok(Arc::new(NearAiChatProvider::new(config.nearai.clone())?))
+            tracing::info!(
+                model = %config.model,
+                "Using Chat Completions API (cloud-api) with API key auth"
+            );
+            Ok(Arc::new(NearAiChatProvider::new(config.clone())?))
         }
     }
 }
