@@ -7,6 +7,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::bootstrap::ironclaw_base_dir;
+
 /// User settings persisted to disk.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Settings {
@@ -247,10 +249,10 @@ pub struct ChannelSettings {
     #[serde(default)]
     pub signal_group_allow_from: Option<String>,
 
-    /// Telegram owner user ID. When set, the bot only responds to this user.
-    /// Captured during setup by having the user message the bot.
+    /// Per-channel owner user IDs. When set, the channel only responds to this user.
+    /// Key: channel name (e.g., "telegram"), Value: owner user ID.
     #[serde(default)]
-    pub telegram_owner_id: Option<i64>,
+    pub wasm_channel_owner_ids: std::collections::HashMap<String, i64>,
 
     /// Enabled WASM channels by name.
     /// Channels not in this list but present in the channels directory will still load.
@@ -656,10 +658,7 @@ impl Settings {
 
     /// Get the default settings file path (~/.ironclaw/settings.json).
     pub fn default_path() -> std::path::PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(".ironclaw")
-            .join("settings.json")
+        ironclaw_base_dir().join("settings.json")
     }
 
     /// Load settings from disk, returning default if not found.
@@ -677,10 +676,7 @@ impl Settings {
 
     /// Default TOML config file path (~/.ironclaw/config.toml).
     pub fn default_toml_path() -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".ironclaw")
-            .join("config.toml")
+        ironclaw_base_dir().join("config.toml")
     }
 
     /// Load settings from a TOML file.
@@ -1053,28 +1049,37 @@ mod tests {
     }
 
     #[test]
-    fn test_telegram_owner_id_db_round_trip() {
+    fn test_wasm_channel_owner_ids_db_round_trip() {
         let mut settings = Settings::default();
-        settings.channels.telegram_owner_id = Some(123456789);
+        settings
+            .channels
+            .wasm_channel_owner_ids
+            .insert("telegram".to_string(), 123456789);
 
         let map = settings.to_db_map();
         let restored = Settings::from_db_map(&map);
-        assert_eq!(restored.channels.telegram_owner_id, Some(123456789));
+        assert_eq!(
+            restored.channels.wasm_channel_owner_ids.get("telegram"),
+            Some(&123456789)
+        );
     }
 
     #[test]
-    fn test_telegram_owner_id_default_none() {
+    fn test_wasm_channel_owner_ids_default_empty() {
         let settings = Settings::default();
-        assert_eq!(settings.channels.telegram_owner_id, None);
+        assert!(settings.channels.wasm_channel_owner_ids.is_empty());
     }
 
     #[test]
-    fn test_telegram_owner_id_via_set() {
+    fn test_wasm_channel_owner_ids_via_set() {
         let mut settings = Settings::default();
         settings
-            .set("channels.telegram_owner_id", "987654321")
+            .set("channels.wasm_channel_owner_ids.telegram", "987654321")
             .unwrap();
-        assert_eq!(settings.channels.telegram_owner_id, Some(987654321));
+        assert_eq!(
+            settings.channels.wasm_channel_owner_ids.get("telegram"),
+            Some(&987654321)
+        );
     }
 
     #[test]
@@ -1410,7 +1415,11 @@ mod tests {
             channels: ChannelSettings {
                 http_enabled: true,
                 http_port: Some(9090),
-                telegram_owner_id: Some(12345),
+                wasm_channel_owner_ids: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert("telegram".to_string(), 12345);
+                    m
+                },
                 ..Default::default()
             },
             heartbeat: HeartbeatSettings {
@@ -1477,9 +1486,9 @@ mod tests {
         assert!(restored.channels.http_enabled, "http_enabled lost");
         assert_eq!(restored.channels.http_port, Some(9090), "http_port lost");
         assert_eq!(
-            restored.channels.telegram_owner_id,
-            Some(12345),
-            "telegram_owner_id lost"
+            restored.channels.wasm_channel_owner_ids.get("telegram"),
+            Some(&12345),
+            "wasm_channel_owner_ids lost"
         );
         assert!(restored.heartbeat.enabled, "heartbeat.enabled lost");
         assert_eq!(
